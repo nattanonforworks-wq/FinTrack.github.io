@@ -148,10 +148,12 @@
                                 </div>
 
                                 <div>
-                                    <label for="date" class="block text-sm font-medium text-gray-700">วันที่</label>
-                                    <input type="date" id="date" name="date" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label for="date" class="block text-sm font-medium text-gray-700">วันที่และเวลา</label>
+                                    <div class="mt-1 flex space-x-2">
+                                        <input type="date" id="date" name="date" required class="block w-2/3 border border-gray-300 rounded-md shadow-sm p-2">
+                                        <input type="time" id="time" name="time" required class="block w-1/3 border border-gray-300 rounded-md shadow-sm p-2">
+                                    </div>
                                 </div>
-
                                 <div>
                                     <label for="amount" class="block text-sm font-medium text-gray-700">จำนวนเงิน (฿)</label>
                                     <input type="number" id="amount" name="amount" required min="0.01" step="0.01" placeholder="เช่น 1,500.00" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
@@ -198,28 +200,30 @@
                         <div class="flex justify-between items-center mb-4 border-b pb-2">
                             <h2 class="text-xl font-semibold text-gray-900">ประวัติรายการบันทึก</h2>
                             <div class="flex space-x-4">
-                                <input type="file" id="importCsvInput" accept=".csv" class="hidden" onchange="importCSV(event)">
-                                <button onclick="document.getElementById('importCsvInput').click()" class="text-sm text-gray-600 hover:text-blue-600 transition duration-150 flex items-center space-x-1">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                                    <span>นำเข้า CSV</span>
-                                </button>
                                 <button onclick="clearAllData()" class="text-sm text-red-600 hover:text-red-800 transition duration-150 flex items-center space-x-1">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     <span>ล้างข้อมูลทั้งหมด</span>
                                 </button>
+
                                 <button onclick="exportCSV()" class="text-sm text-gray-600 hover:text-blue-600 transition duration-150 flex items-center space-x-1">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                     <span>ส่งออก CSV</span>
                                 </button>
-                            </div>
+                                <div class="relative">
+                                    <input type="file" id="importCsvFile" accept=".csv" class="hidden" onchange="processImport(event)">
+                                    <button onclick="document.getElementById('importCsvFile').click()" class="text-sm text-gray-600 hover:text-blue-600 transition duration-150 flex items-center space-x-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                        <span>นำเข้า CSV</span>
+                                    </button>
+                                </div>
+                                </div>
                         </div>
 
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
                                 <thead class="bg-gray-50">
                                     <tr>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่</th>
-                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รายละเอียด</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่และเวลา</th> <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รายละเอียด</th>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">หมวดหมู่</th>
                                         <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">จำนวนเงิน</th>
                                         <th scope="col" class="relative px-6 py-3"><span class="sr-only">Delete</span></th>
@@ -293,8 +297,14 @@
             // 2. โหลดข้อมูล
             loadTransactions();
             
-            // 3. ตั้งค่าวันที่เริ่มต้นในฟอร์ม
-            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            // 3. ตั้งค่าวันที่เริ่มต้นในฟอร์ม (รวมถึงเวลา)
+            const today = new Date();
+            const timeString = today.toTimeString().slice(0, 5); // HH:MM
+            document.getElementById('date').value = today.toISOString().split('T')[0];
+            const timeInput = document.getElementById('time');
+            if (timeInput) {
+                timeInput.value = timeString; 
+            }
         }
 
         /**
@@ -328,7 +338,8 @@
                 transactions.sort((a, b) => {
                     const timeA = a.timestamp || a.date;
                     const timeB = b.timestamp || b.date;
-                    return timeB.localeCompare(timeA); // Simple string comparison for sort
+                    // timeB.localeCompare(timeA) works well for YYYY-MM-DD HH:MM and ISO format
+                    return timeB.localeCompare(timeA); 
                 });
 
                 renderTransactions();
@@ -354,7 +365,8 @@
 
             const form = event.target;
             const type = form.type.value;
-            const date = form.date.value;
+            const date = form.date.value; // YYYY-MM-DD
+            const time = form.time.value; // HH:MM
             const amount = parseFloat(form.amount.value);
             const category = form.category.value;
             const description = form.description.value.trim();
@@ -364,22 +376,29 @@
                 return;
             }
 
+            // Combine date and time for internal use and a more accurate timestamp
+            const dateTimeString = `${date}T${time}:00`; // YYYY-MM-DDTHH:MM:SS
+            const combinedDateForSort = `${date} ${time}`; // YYYY-MM-DD HH:MM
+            const preciseTimestamp = new Date(dateTimeString).toISOString();
+
             const newTransaction = {
                 id: Date.now().toString() + Math.random().toString(36).substring(2, 9), 
                 type,
-                date,
+                // Store combined date and time
+                date: combinedDateForSort, 
                 amount,
                 category,
                 description,
-                timestamp: new Date().toISOString(), 
+                timestamp: preciseTimestamp, // Precise timestamp
             };
 
             transactions.unshift(newTransaction); 
             saveTransactions();
             loadTransactions(); 
 
-            form.reset();
-            form.date.value = new Date().toISOString().split('T')[0];
+            // Reset only amount and description, keep date/time set for next entry
+            form.amount.value = '';
+            form.description.value = '';
             form.category.selectedIndex = 0;
             
             switchTab('transactions'); 
@@ -405,7 +424,7 @@
         }
         
         /**
-         * Clears all data from Local Storage after confirmation.
+         * NEW FUNCTION: Clears all data from Local Storage after confirmation.
          */
         window.clearAllData = function() {
              confirmCustom('ยืนยันการล้างข้อมูลทั้งหมด', 
@@ -730,10 +749,11 @@
             // Map data to CSV format
             const csvData = transactions.map(t => [
                 t.id,
-                t.date,
+                // t.date now includes time (YYYY-MM-DD HH:MM)
+                t.date, 
                 t.type === 'income' ? 'รายรับ' : 'รายจ่าย',
                 t.category,
-                // Sanitize description for CSV: enclose in quotes and escape internal quotes
+                // Sanitize description for CSV
                 `"${t.description.replace(/"/g, '""').replace(/\r?\n|\r/g, ' ')}"`,
                 t.amount,
                 t.timestamp || ''
@@ -764,145 +784,132 @@
         }
         
         // =======================================================================
-        // IMPORT FUNCTION (CSV) - NEW
+        // IMPORT FUNCTION (CSV)
         // =======================================================================
 
         /**
-         * Robustly parses a CSV string into an array of objects.
-         * Assumes the first row is the header. Handles quoted fields (like 'Description').
-         * @param {string} csvString 
-         * @returns {Array<Object>}
+         * Parses CSV text into an array of objects.
+         * Basic implementation assuming no internal commas/quotes in data other than Description.
+         * @param {string} csvText
+         * @returns {Array<object>}
          */
-        function parseCSV(csvString) {
+        function parseCSV(csvText) {
             // Remove UTF-8 BOM if present
-            if (csvString.charCodeAt(0) === 0xFEFF) {
-                csvString = csvString.slice(1);
+            const cleanText = csvText.trim().replace(/^\ufeff/, '');
+            
+            // Simple split by newline for rows
+            const rows = cleanText.split(/\r?\n|\r/).filter(row => row.trim() !== '');
+
+            if (rows.length < 2) {
+                return []; // No data rows
             }
             
-            // Split by line
-            const lines = csvString.split(/\r?\n/);
-            if (lines.length < 2) return [];
+            // Headers: ID, Date, Type, Category, Description, Amount, Timestamp
+            const headers = rows[0].split(',');
+            if (headers.length !== 7 || headers[1].trim() !== 'Date' || headers[5].trim() !== 'Amount') {
+                 throw new Error("Invalid CSV format: Headers mismatch.");
+            }
 
-            // Get headers and trim whitespace
-            const headers = lines[0].split(',').map(h => h.trim());
-            const data = [];
+            const transactionsData = [];
+            
+            // Loop through data rows (starting from index 1)
+            for (let i = 1; i < rows.length; i++) {
+                let row = rows[i].trim();
+                if (!row) continue;
 
-            // Regex to split CSV row by comma, respecting quoted fields: /("[^"]*"|[^,]+)/g
-            const CSV_REGEX = /(".*?"|[^",\s]+)(?=\s*,|\s*$)/g;
-
-
-            for (let i = 1; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue; // Skip empty lines
-
-                // Simplified parsing using regex to handle basic quoting for description
-                let values = line.match(CSV_REGEX) || line.split(',');
+                // Handle quoted Description using a simple regex (non-perfect but works for simple cases)
+                const regex = /(?:^|,)(\"(?:[^\"]+|\"\")*\"|[^,]*)/g;
+                let values = [];
+                let match;
+                while (match = regex.exec(row)) {
+                    // Remove starting comma and trim
+                    let value = match[1];
+                    if (value.startsWith(',')) value = value.substring(1);
+                    
+                    // Remove surrounding quotes and replace "" with "
+                    if (value.startsWith('"') && value.endsWith('"')) {
+                        value = value.substring(1, value.length - 1).replace(/""/g, '"');
+                    }
+                    values.push(value);
+                }
                 
                 if (values.length !== headers.length) {
-                    console.warn(`Skipping malformed row ${i+1} (column mismatch): ${line}`);
+                    console.warn(`Skipping row ${i} due to column mismatch: ${rows[i]}`);
                     continue; 
                 }
                 
-                const obj = {};
-                
-                for (let j = 0; j < headers.length; j++) {
-                    let value = values[j] ? values[j].trim() : '';
-                    
-                    // Unquote and unescape values (specifically for Description)
-                    if (value.startsWith('"') && value.endsWith('"')) {
-                        // Remove outer quotes and replace "" with "
-                        value = value.substring(1, value.length - 1).replace(/""/g, '"');
-                    }
-                    obj[headers[j]] = value;
-                }
-                
-                data.push(obj);
-            }
-            return data;
-        }
+                // Map values to transaction object
+                const [id, date, typeText, category, description, amountStr, timestamp] = values.map(v => v.trim());
 
+                const type = (typeText === 'รายรับ') ? 'income' : (typeText === 'รายจ่าย' ? 'expense' : null);
+                const amount = parseFloat(amountStr);
+
+                if (!type || isNaN(amount) || amount <= 0 || !date) {
+                     console.warn(`Skipping invalid transaction: ${rows[i]}`);
+                     continue; 
+                }
+
+                transactionsData.push({
+                    id: id || Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                    type,
+                    date, // This is already in YYYY-MM-DD HH:MM format
+                    amount,
+                    category,
+                    description,
+                    timestamp: timestamp || new Date().toISOString()
+                });
+            }
+            return transactionsData;
+        }
 
         /**
-         * Imports transaction data from a CSV file selected by the user.
+         * Handles the CSV file selection and import process.
          * @param {Event} event
          */
-        window.importCSV = function(event) {
+        window.processImport = function(event) {
             const file = event.target.files[0];
-            if (!file) {
-                alertCustom('นำเข้าไม่สำเร็จ', 'กรุณาเลือกไฟล์ CSV ที่ต้องการนำเข้า');
-                return;
-            }
+            if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const csvString = e.target.result;
-                    const importedData = parseCSV(csvString);
-                    let skippedCount = 0;
-                    
-                    const newTransactions = importedData.map(d => {
-                        // Ensure all required headers are present before accessing them
-                        const requiredHeaders = ['ID', 'Date', 'Type', 'Amount', 'Category'];
-                        if (!requiredHeaders.every(h => d.hasOwnProperty(h))) {
-                             skippedCount++;
-                             return null; 
-                        }
-                        
-                        const amount = parseFloat(d.Amount);
-                        // Convert Thai type back to English type used internally
-                        const type = d.Type === 'รายรับ' ? 'income' : d.Type === 'รายจ่าย' ? 'expense' : null;
-                        
-                        // Basic Validation
-                        if (!d.ID || !d.Date || !type || isNaN(amount) || amount <= 0 || !d.Category || d.Date.length !== 10) {
-                             console.warn("Skipping invalid transaction data:", d);
-                             skippedCount++;
-                             return null; 
-                        }
-                        
-                        // Check for duplicates by ID (ID is the primary key)
-                        if (transactions.some(t => t.id === d.ID)) {
-                            console.warn("Skipping duplicate transaction ID:", d.ID);
-                            skippedCount++;
-                            return null;
+            confirmCustom('ยืนยันการนำเข้าข้อมูล', 
+                          'รายการธุรกรรมใหม่จะถูก **นำเข้าไปรวม** กับข้อมูลที่มีอยู่ คุณยืนยันหรือไม่?', 
+                          () => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const csvText = e.target.result;
+                        const importedTransactions = parseCSV(csvText);
+
+                        if (importedTransactions.length === 0) {
+                            throw new Error("ไม่พบรายการธุรกรรมที่ถูกต้องในไฟล์");
                         }
 
-                        return {
-                            id: d.ID,
-                            type: type,
-                            date: d.Date,
-                            amount: amount,
-                            category: d.Category,
-                            description: d.Description || '',
-                            timestamp: d.Timestamp || new Date().toISOString(), 
-                        };
-                    }).filter(t => t !== null); // Remove skipped/invalid transactions
-                    
-                    if (newTransactions.length > 0) {
-                        // Merge and reload
-                        transactions = transactions.concat(newTransactions);
+                        // Merge new transactions with existing ones, excluding duplicates by ID
+                        const existingIds = new Set(transactions.map(t => t.id));
+                        const newTransactions = importedTransactions.filter(t => !existingIds.has(t.id));
+
+                        transactions = [...newTransactions, ...transactions];
+
                         saveTransactions();
-                        loadTransactions(); // Reloads, sorts, and renders
+                        loadTransactions();
                         
-                        alertCustom(
-                            'นำเข้าสำเร็จ', 
-                            `นำเข้ารายการธุรกรรมใหม่ ${newTransactions.length} รายการ\n` + 
-                            `(ข้ามรายการที่ไม่ถูกต้อง/ซ้ำ: ${skippedCount} รายการ)`
-                        );
-                    } else if (skippedCount > 0) {
-                        alertCustom('นำเข้าไม่สำเร็จ', `ไม่พบรายการธุรกรรมใหม่ที่ถูกต้องให้บันทึก (ข้ามไป ${skippedCount} รายการ)`);
-                    } else {
-                        alertCustom('นำเข้าไม่สำเร็จ', 'ไม่พบข้อมูลรายการธุรกรรมที่ถูกต้องในไฟล์');
+                        // Clear the file input so the same file can be imported again if needed
+                        event.target.value = ''; 
+
+                        alertCustom('นำเข้าสำเร็จ', `นำเข้ารายการธุรกรรมใหม่ ${newTransactions.length} รายการ`);
+                        switchTab('transactions');
+
+                    } catch (error) {
+                        alertCustom('นำเข้าไม่สำเร็จ', error.message || 'เกิดข้อผิดพลาดในการประมวลผลไฟล์ CSV');
+                        console.error("Import error:", error);
                     }
-                } catch (error) {
-                    console.error("Error processing CSV import:", error);
-                    alertCustom('เกิดข้อผิดพลาด', 'ไม่สามารถอ่านหรือประมวลผลไฟล์ CSV ได้ โปรดตรวจสอบรูปแบบไฟล์');
-                }
-            };
-            reader.readAsText(file, 'UTF-8');
-            
-            // Clear file input to allow re-importing the same file
-            event.target.value = '';
+                };
+                reader.onerror = function() {
+                    alertCustom('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ได้');
+                };
+                reader.readAsText(file, 'UTF-8');
+            });
         }
+
 
         // =======================================================================
         // UI CONTROL
@@ -938,7 +945,8 @@
         function alertCustom(title, body, onConfirm = null) {
             const modal = document.getElementById('messageBox');
             document.getElementById('messageTitle').textContent = title;
-            document.getElementById('messageBody').innerText = body; // Use innerText for newline support
+            // Use innerText for better handling of multi-line messages
+            document.getElementById('messageBody').innerText = body; 
             const confirmBtn = document.getElementById('messageConfirm');
             const cancelBtn = document.getElementById('messageCancel');
 
@@ -964,7 +972,8 @@
         function confirmCustom(title, body, onConfirm) {
             const modal = document.getElementById('messageBox');
             document.getElementById('messageTitle').textContent = title;
-            document.getElementById('messageBody').innerHTML = body; // Use innerHTML for formatting support
+            // Use innerHTML for formatting support
+            document.getElementById('messageBody').innerHTML = body; 
             const confirmBtn = document.getElementById('messageConfirm');
             const cancelBtn = document.getElementById('messageCancel');
 
