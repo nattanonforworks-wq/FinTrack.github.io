@@ -207,7 +207,6 @@
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     <span>ล้างข้อมูลทั้งหมด</span>
                                 </button>
-
                                 <button onclick="exportCSV()" class="text-sm text-gray-600 hover:text-blue-600 transition duration-150 flex items-center space-x-1">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                     <span>ส่งออก CSV</span>
@@ -734,7 +733,7 @@
                 t.date,
                 t.type === 'income' ? 'รายรับ' : 'รายจ่าย',
                 t.category,
-                // Sanitize description for CSV
+                // Sanitize description for CSV: enclose in quotes and escape internal quotes
                 `"${t.description.replace(/"/g, '""').replace(/\r?\n|\r/g, ' ')}"`,
                 t.amount,
                 t.timestamp || ''
@@ -775,46 +774,43 @@
          * @returns {Array<Object>}
          */
         function parseCSV(csvString) {
-            // Remove UTF-8 BOM if present (added during export for Excel compatibility)
+            // Remove UTF-8 BOM if present
             if (csvString.charCodeAt(0) === 0xFEFF) {
                 csvString = csvString.slice(1);
             }
             
-            // Regex to split by comma, respecting quoted fields.
-            // This regex tries to capture fields enclosed in double quotes or non-comma sequences.
+            // Split by line
             const lines = csvString.split(/\r?\n/);
             if (lines.length < 2) return [];
 
+            // Get headers and trim whitespace
             const headers = lines[0].split(',').map(h => h.trim());
             const data = [];
 
-            for (let i = 1; i < lines.length; i++) {
-                if (!lines[i].trim()) continue; // Skip empty lines
+            // Regex to split CSV row by comma, respecting quoted fields: /("[^"]*"|[^,]+)/g
+            const CSV_REGEX = /(".*?"|[^",\s]+)(?=\s*,|\s*$)/g;
 
-                // Use a simplified match for fields
-                const regex = /("[^"]*"|[^,]+)/g; 
-                const values = lines[i].match(regex) || [];
-                
-                // Adjust for trailing empty fields not caught by match, if length doesn't match
-                if (values.length < headers.length) {
-                     // Try a simpler split, assuming no complex quoting for robustness
-                     const simpleSplit = lines[i].split(',');
-                     if (simpleSplit.length === headers.length) {
-                         values.splice(0, values.length, ...simpleSplit); // Replace values with simple split
-                     }
-                }
+
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue; // Skip empty lines
+
+                // Simplified parsing using regex to handle basic quoting for description
+                let values = line.match(CSV_REGEX) || line.split(',');
                 
                 if (values.length !== headers.length) {
-                    console.warn(`Skipping malformed row ${i+1} (column mismatch): ${lines[i]}`);
+                    console.warn(`Skipping malformed row ${i+1} (column mismatch): ${line}`);
                     continue; 
                 }
                 
                 const obj = {};
                 
                 for (let j = 0; j < headers.length; j++) {
-                    let value = values[j].trim();
-                    // Unquote values if they are quoted (as description is)
-                    if (value && value.startsWith('"') && value.endsWith('"')) {
+                    let value = values[j] ? values[j].trim() : '';
+                    
+                    // Unquote and unescape values (specifically for Description)
+                    if (value.startsWith('"') && value.endsWith('"')) {
+                        // Remove outer quotes and replace "" with "
                         value = value.substring(1, value.length - 1).replace(/""/g, '"');
                     }
                     obj[headers[j]] = value;
@@ -842,27 +838,33 @@
                 try {
                     const csvString = e.target.result;
                     const importedData = parseCSV(csvString);
-                    let validCount = 0;
                     let skippedCount = 0;
                     
                     const newTransactions = importedData.map(d => {
-                        const amount = parseFloat(d.Amount);
-                        // Convert Thai type back to English type used internally
-                        const type = d.Type === 'รายรับ' ? 'income' : d.Type === 'รายจ่าย' ? 'expense' : null;
-                        
-                        // Basic Validation against required fields
-                        if (!d.ID || !d.Date || !type || isNaN(amount) || amount <= 0 || !d.Category || d.Date.length !== 10) {
+                        // Ensure all required headers are present before accessing them
+                        const requiredHeaders = ['ID', 'Date', 'Type', 'Amount', 'Category'];
+                        if (!requiredHeaders.every(h => d.hasOwnProperty(h))) {
                              skippedCount++;
                              return null; 
                         }
                         
-                        // Check for duplicates by ID (Prevents re-importing existing records)
+                        const amount = parseFloat(d.Amount);
+                        // Convert Thai type back to English type used internally
+                        const type = d.Type === 'รายรับ' ? 'income' : d.Type === 'รายจ่าย' ? 'expense' : null;
+                        
+                        // Basic Validation
+                        if (!d.ID || !d.Date || !type || isNaN(amount) || amount <= 0 || !d.Category || d.Date.length !== 10) {
+                             console.warn("Skipping invalid transaction data:", d);
+                             skippedCount++;
+                             return null; 
+                        }
+                        
+                        // Check for duplicates by ID (ID is the primary key)
                         if (transactions.some(t => t.id === d.ID)) {
+                            console.warn("Skipping duplicate transaction ID:", d.ID);
                             skippedCount++;
                             return null;
                         }
-                        
-                        validCount++;
 
                         return {
                             id: d.ID,
@@ -871,7 +873,7 @@
                             amount: amount,
                             category: d.Category,
                             description: d.Description || '',
-                            timestamp: d.Timestamp || new Date().toISOString(), // Use existing timestamp if available
+                            timestamp: d.Timestamp || new Date().toISOString(), 
                         };
                     }).filter(t => t !== null); // Remove skipped/invalid transactions
                     
