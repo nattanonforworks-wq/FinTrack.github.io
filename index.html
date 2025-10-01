@@ -198,6 +198,11 @@
                         <div class="flex justify-between items-center mb-4 border-b pb-2">
                             <h2 class="text-xl font-semibold text-gray-900">ประวัติรายการบันทึก</h2>
                             <div class="flex space-x-4">
+                                <input type="file" id="importCsvInput" accept=".csv" class="hidden" onchange="importCSV(event)">
+                                <button onclick="document.getElementById('importCsvInput').click()" class="text-sm text-gray-600 hover:text-blue-600 transition duration-150 flex items-center space-x-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                    <span>นำเข้า CSV</span>
+                                </button>
                                 <button onclick="clearAllData()" class="text-sm text-red-600 hover:text-red-800 transition duration-150 flex items-center space-x-1">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     <span>ล้างข้อมูลทั้งหมด</span>
@@ -401,7 +406,7 @@
         }
         
         /**
-         * NEW FUNCTION: Clears all data from Local Storage after confirmation.
+         * Clears all data from Local Storage after confirmation.
          */
         window.clearAllData = function() {
              confirmCustom('ยืนยันการล้างข้อมูลทั้งหมด', 
@@ -758,6 +763,144 @@
                 document.body.removeChild(link);
             }
         }
+        
+        // =======================================================================
+        // IMPORT FUNCTION (CSV) - NEW
+        // =======================================================================
+
+        /**
+         * Robustly parses a CSV string into an array of objects.
+         * Assumes the first row is the header. Handles quoted fields (like 'Description').
+         * @param {string} csvString 
+         * @returns {Array<Object>}
+         */
+        function parseCSV(csvString) {
+            // Remove UTF-8 BOM if present (added during export for Excel compatibility)
+            if (csvString.charCodeAt(0) === 0xFEFF) {
+                csvString = csvString.slice(1);
+            }
+            
+            // Regex to split by comma, respecting quoted fields.
+            // This regex tries to capture fields enclosed in double quotes or non-comma sequences.
+            const lines = csvString.split(/\r?\n/);
+            if (lines.length < 2) return [];
+
+            const headers = lines[0].split(',').map(h => h.trim());
+            const data = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                if (!lines[i].trim()) continue; // Skip empty lines
+
+                // Use a simplified match for fields
+                const regex = /("[^"]*"|[^,]+)/g; 
+                const values = lines[i].match(regex) || [];
+                
+                // Adjust for trailing empty fields not caught by match, if length doesn't match
+                if (values.length < headers.length) {
+                     // Try a simpler split, assuming no complex quoting for robustness
+                     const simpleSplit = lines[i].split(',');
+                     if (simpleSplit.length === headers.length) {
+                         values.splice(0, values.length, ...simpleSplit); // Replace values with simple split
+                     }
+                }
+                
+                if (values.length !== headers.length) {
+                    console.warn(`Skipping malformed row ${i+1} (column mismatch): ${lines[i]}`);
+                    continue; 
+                }
+                
+                const obj = {};
+                
+                for (let j = 0; j < headers.length; j++) {
+                    let value = values[j].trim();
+                    // Unquote values if they are quoted (as description is)
+                    if (value && value.startsWith('"') && value.endsWith('"')) {
+                        value = value.substring(1, value.length - 1).replace(/""/g, '"');
+                    }
+                    obj[headers[j]] = value;
+                }
+                
+                data.push(obj);
+            }
+            return data;
+        }
+
+
+        /**
+         * Imports transaction data from a CSV file selected by the user.
+         * @param {Event} event
+         */
+        window.importCSV = function(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                alertCustom('นำเข้าไม่สำเร็จ', 'กรุณาเลือกไฟล์ CSV ที่ต้องการนำเข้า');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const csvString = e.target.result;
+                    const importedData = parseCSV(csvString);
+                    let validCount = 0;
+                    let skippedCount = 0;
+                    
+                    const newTransactions = importedData.map(d => {
+                        const amount = parseFloat(d.Amount);
+                        // Convert Thai type back to English type used internally
+                        const type = d.Type === 'รายรับ' ? 'income' : d.Type === 'รายจ่าย' ? 'expense' : null;
+                        
+                        // Basic Validation against required fields
+                        if (!d.ID || !d.Date || !type || isNaN(amount) || amount <= 0 || !d.Category || d.Date.length !== 10) {
+                             skippedCount++;
+                             return null; 
+                        }
+                        
+                        // Check for duplicates by ID (Prevents re-importing existing records)
+                        if (transactions.some(t => t.id === d.ID)) {
+                            skippedCount++;
+                            return null;
+                        }
+                        
+                        validCount++;
+
+                        return {
+                            id: d.ID,
+                            type: type,
+                            date: d.Date,
+                            amount: amount,
+                            category: d.Category,
+                            description: d.Description || '',
+                            timestamp: d.Timestamp || new Date().toISOString(), // Use existing timestamp if available
+                        };
+                    }).filter(t => t !== null); // Remove skipped/invalid transactions
+                    
+                    if (newTransactions.length > 0) {
+                        // Merge and reload
+                        transactions = transactions.concat(newTransactions);
+                        saveTransactions();
+                        loadTransactions(); // Reloads, sorts, and renders
+                        
+                        alertCustom(
+                            'นำเข้าสำเร็จ', 
+                            `นำเข้ารายการธุรกรรมใหม่ ${newTransactions.length} รายการ\n` + 
+                            `(ข้ามรายการที่ไม่ถูกต้อง/ซ้ำ: ${skippedCount} รายการ)`
+                        );
+                    } else if (skippedCount > 0) {
+                        alertCustom('นำเข้าไม่สำเร็จ', `ไม่พบรายการธุรกรรมใหม่ที่ถูกต้องให้บันทึก (ข้ามไป ${skippedCount} รายการ)`);
+                    } else {
+                        alertCustom('นำเข้าไม่สำเร็จ', 'ไม่พบข้อมูลรายการธุรกรรมที่ถูกต้องในไฟล์');
+                    }
+                } catch (error) {
+                    console.error("Error processing CSV import:", error);
+                    alertCustom('เกิดข้อผิดพลาด', 'ไม่สามารถอ่านหรือประมวลผลไฟล์ CSV ได้ โปรดตรวจสอบรูปแบบไฟล์');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+            
+            // Clear file input to allow re-importing the same file
+            event.target.value = '';
+        }
 
         // =======================================================================
         // UI CONTROL
@@ -793,7 +936,7 @@
         function alertCustom(title, body, onConfirm = null) {
             const modal = document.getElementById('messageBox');
             document.getElementById('messageTitle').textContent = title;
-            document.getElementById('messageBody').textContent = body;
+            document.getElementById('messageBody').innerText = body; // Use innerText for newline support
             const confirmBtn = document.getElementById('messageConfirm');
             const cancelBtn = document.getElementById('messageCancel');
 
@@ -819,7 +962,7 @@
         function confirmCustom(title, body, onConfirm) {
             const modal = document.getElementById('messageBox');
             document.getElementById('messageTitle').textContent = title;
-            document.getElementById('messageBody').textContent = body;
+            document.getElementById('messageBody').innerHTML = body; // Use innerHTML for formatting support
             const confirmBtn = document.getElementById('messageConfirm');
             const cancelBtn = document.getElementById('messageCancel');
 
