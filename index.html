@@ -86,7 +86,7 @@
                             <p id="totalExpense" class="text-2xl font-bold mt-1 expense-color">0.00 ฿</p>
                         </div>
                         <div class="container-box p-6 flex flex-col items-center text-center">
-                            <p class="text-sm font-medium text-gray-500">ยอดคงเหลือสุทธิ</p>
+                            <p id="netBalanceTitle" class="text-sm font-medium text-gray-500">ยอดคงเหลือสุทธิ</p>
                             <p id="netBalance" class="text-2xl font-bold mt-1 balance-color">0.00 ฿</p>
                         </div>
                     </div>
@@ -806,8 +806,9 @@
             
             // Headers: ID, Date, Type, Category, Description, Amount, Timestamp
             const headers = rows[0].split(',');
+            // Check essential headers and total count (7 columns)
             if (headers.length !== 7 || headers[1].trim() !== 'Date' || headers[5].trim() !== 'Amount') {
-                 throw new Error("Invalid CSV format: Headers mismatch.");
+                 throw new Error("Invalid CSV format: Headers mismatch or incorrect column count (expected 7).");
             }
 
             const transactionsData = [];
@@ -821,20 +822,61 @@
                 const regex = /(?:^|,)(\"(?:[^\"]+|\"\")*\"|[^,]*)/g;
                 let values = [];
                 let match;
+                
+                // This complex loop handles commas *inside* quoted descriptions
+                let lastIndex = 0;
                 while (match = regex.exec(row)) {
-                    // Remove starting comma and trim
                     let value = match[1];
-                    if (value.startsWith(',')) value = value.substring(1);
+                    
+                    // The regex includes the starting comma if not at the start, remove it.
+                    if (match.index > 0 && value.startsWith(',')) {
+                        value = value.substring(1);
+                    }
                     
                     // Remove surrounding quotes and replace "" with "
                     if (value.startsWith('"') && value.endsWith('"')) {
                         value = value.substring(1, value.length - 1).replace(/""/g, '"');
                     }
-                    values.push(value);
+                    values.push(value.trim());
+                    lastIndex = match.index + match[0].length;
+                    
+                    // Break if we've processed the entire row
+                    if (lastIndex === row.length) break;
+                    
+                    // Handle edge case where the regex might miss the very last field if it was empty.
+                    if (lastIndex < row.length && row[lastIndex] === ',') {
+                       // This handles trailing empty fields after the last matched group.
+                       // However, the original regex logic is designed to match empty fields too.
+                       // For simplicity and alignment with the export, we trust the regex output count for now.
+                    }
                 }
                 
-                if (values.length !== headers.length) {
-                    console.warn(`Skipping row ${i} due to column mismatch: ${rows[i]}`);
+                // Use the standard CSV parser logic for robustness on 7 fixed columns
+                // Re-parsing the row for 7 columns to be safe:
+                let rowValues = [];
+                let cell = '';
+                let inQuote = false;
+                for (let j = 0; j < row.length; j++) {
+                    const char = row[j];
+                    if (char === '"') {
+                        if (row[j+1] === '"') { // Escaped quote ""
+                            cell += '"';
+                            j++;
+                        } else {
+                            inQuote = !inQuote;
+                        }
+                    } else if (char === ',' && !inQuote) {
+                        rowValues.push(cell.trim());
+                        cell = '';
+                    } else {
+                        cell += char;
+                    }
+                }
+                rowValues.push(cell.trim());
+                values = rowValues; // Use the more reliable values array
+                
+                if (values.length !== 7) {
+                    console.warn(`Skipping row ${i} due to column mismatch (expected 7, got ${values.length}): ${rows[i]}`);
                     continue; 
                 }
                 
@@ -843,16 +885,17 @@
 
                 const type = (typeText === 'รายรับ') ? 'income' : (typeText === 'รายจ่าย' ? 'expense' : null);
                 const amount = parseFloat(amountStr);
-
-                if (!type || isNaN(amount) || amount <= 0 || !date) {
-                     console.warn(`Skipping invalid transaction: ${rows[i]}`);
+                
+                // Validate data fields
+                if (!type || isNaN(amount) || amount <= 0 || !date || date.length < 16) { // date format YYYY-MM-DD HH:MM
+                     console.warn(`Skipping invalid transaction (Invalid Type, Amount, or Date): ${rows[i]}`);
                      continue; 
                 }
 
                 transactionsData.push({
-                    id: id || Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                    id: id || Date.now().toString() + Math.random().toString(36).substring(2, 9), // Fallback ID
                     type,
-                    date, // This is already in YYYY-MM-DD HH:MM format
+                    date, // This is already in YYYY-MM-DD HH:MM format from export
                     amount,
                     category,
                     description,
